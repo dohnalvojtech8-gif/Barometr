@@ -1,0 +1,20 @@
+BAROMETR — kompletní balíček prototypu, verze 0.2
+
+ZAČNĚTE ZDE
+1. Rozbalte ZIP.
+2. Otevřete 01-VSECHNY-OBRAZOVKY.html: všechny návrhy pod sebou, fungují bez JavaScriptu i internetu.
+3. Pro ovládání otevřete 02-INTERAKTIVNI-APLIKACE.html v běžném prohlížeči. Náhled souborů na telefonu nemusí spouštět JavaScript.
+
+OBSAH
+- Oba samostatné HTML soubory obsahují i skutečné produktové fotografie.
+- aplikace/: oddělené HTML, CSS, JavaScript a fotografie.
+- dokumentace/: přehled funkcí, postup rozšíření katalogu a zdroje obrázků.
+- scripts/: sestavení samostatných souborů a kontrola obrazovek.
+
+VÝVOJ
+Node.js: node scripts/sestavit-nahledy.cjs
+Kontrola: node scripts/overit.cjs
+Lokální server: python3 -m http.server 8080 --directory aplikace
+Poté otevřete http://localhost:8080
+
+Jde o kompletní zdroje aktuálního prototypu, ne hotový systém měření. Automatické rozpoznání hladiny, OCR váhy, přepočet hmotnosti, platby a server nejsou implementovány. Data se ukládají jen v prohlížeči, pokud to povoluje. Přístup k fotoaparátu závisí na prohlížeči a zabezpečeném kontextu.
