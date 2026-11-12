@@ -5,3 +5,13 @@ assert(validCode('3017620422003'));assert(!validCode('3017620422004'));assert(!v
 assert.equal(weightVolume(700,400,1100,750),350);assert.equal(weightVolume(700,400,1100,400),0);assert.equal(weightVolume(700,400,1100,1100),700);
 for(const args of [[700,400,400,400],[700,400,1100,1200],[700,400,1100,399],[700,NaN,1100,700],[0,400,1100,700]])assert.throws(()=>weightVolume(...args));
 console.log('Scanner: barcode checksum, mass calibration, empty/full boundaries and invalid inputs passed.');
+const {guidance,frameStats}=sandbox.window.BarometrScanner;
+assert.equal(guidance({light:20,motion:0},5,null).ready,false);
+assert.equal(guidance({light:250,motion:0},5,null).ready,false);
+assert.match(guidance({light:130,motion:0},5,20).text,/Narovnejte/);
+assert.match(guidance({light:130,motion:0,outline:{height:.3,center:.5}},5,null).text,/přibližte/);
+assert.match(guidance({light:130,motion:0,outline:{height:.7,center:.2}},5,null).text,/doprava/);
+assert.equal(guidance({light:130,motion:0,outline:{height:.7,center:.5}},5,null).ready,true);
+const pixels=new Uint8ClampedArray(64*48*4).fill(255);for(let y=8;y<40;y++)for(let x=25;x<39;x++)for(let k=0;k<3;k++)pixels[(y*64+x)*4+k]=50;
+const stats=frameStats(pixels,pixels,64,48);assert(stats.outline);assert(stats.outline.center>.4&&stats.outline.center<.6);assert.equal(stats.motion,0);
+console.log('Live guidance: light, tilt, motion, distance, centering and synthetic silhouette passed.');

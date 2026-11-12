@@ -79,6 +79,7 @@ def test_password_change_revokes_other_sessions():
  assert a.post('/api/password',json={'oldPassword':'test-admin-two-password','newPassword':'replacement-test-password'},headers=h).status_code==200
  assert b.get('/api/me').status_code==401
  assert a.get('/api/me').status_code==200
+ assert a.post('/api/password',json={'oldPassword':'replacement-test-password','newPassword':'test-admin-two-password'},headers=h).status_code==200
 
 def test_barcode_lookup_validation_and_fallback(monkeypatch):
  from io import BytesIO
@@ -101,3 +102,31 @@ def test_barcode_lookup_validation_and_fallback(monkeypatch):
  monkeypatch.setattr('urllib.request.urlopen',offline)
  assert a.get('/api/barcode/3017620422003').status_code==503
  assert a.get('/scanner.js').status_code==200
+
+def test_inventory_plan_and_private_scan_photos():
+ import base64
+ a,h=login();b,bh=login('AdminTwo','test-admin-two-password')
+ product_id=next(iter(PRODUCTS));product=PRODUCTS[product_id]
+ assert a.post('/api/unlocks',json={'productId':product_id},headers=h).status_code==200
+ entry={'id':'planned-1','productId':product_id,'capacity':product['variants'][0]['ml'],'label':'Police 1','status':'pending'}
+ state={'rows':[],'records':[],'cycle':'Měsíční','closing':'04:00','inventoryPlan':{'entries':[entry],'runId':'test-run'}}
+ assert a.put('/api/state',json=state,headers=h).status_code==200
+ assert a.get('/api/me').json['state']['inventoryPlan']['entries'][0]['label']=='Police 1'
+ duplicate={**state,'inventoryPlan':{'entries':[entry,entry]}}
+ assert a.put('/api/state',json=duplicate,headers=h).status_code==400
+ invalid={**state,'inventoryPlan':{'entries':[{**entry,'capacity':123}]}}
+ assert a.put('/api/state',json=invalid,headers=h).status_code==400
+ image='data:image/jpeg;base64,'+base64.b64encode(b'\xff\xd8test-jpeg\xff\xd9').decode()
+ url='/api/scan-photos/test-private-snapshot'
+ assert app.test_client().put(url,json={'image':image}).status_code==401
+ assert a.put(url,json={'image':'not jpeg'},headers=h).status_code==400
+ assert a.put(url,json={'image':image},headers=h).status_code==200
+ assert a.put(url,json={'image':image},headers=h).status_code==200
+ assert a.get(url).content_type=='image/jpeg'
+ assert a.get(url).data==b'\xff\xd8test-jpeg\xff\xd9'
+ replacement='data:image/jpeg;base64,'+base64.b64encode(b'\xff\xd8retry-jpeg\xff\xd9').decode()
+ assert a.put(url,json={'image':replacement},headers=h).status_code==200
+ assert a.get(url).data==b'\xff\xd8retry-jpeg\xff\xd9'
+ assert b.get(url).status_code==404
+ assert b.put(url,json={'image':image},headers=bh).status_code==404
+ assert a.get('/inventory.js').status_code==200

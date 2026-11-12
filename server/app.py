@@ -45,6 +45,7 @@ def password_ok(value,hashed):
 DUMMY=password_hash(secrets.token_urlsafe(24))
 SCHEMA=[
 '''CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL, username_key TEXT UNIQUE NOT NULL, first_name TEXT NOT NULL, last_name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','user')), status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','suspended')), created_at DOUBLE PRECISION NOT NULL, last_login DOUBLE PRECISION, last_seen DOUBLE PRECISION, login_count INTEGER NOT NULL DEFAULT 0, state_json TEXT NOT NULL DEFAULT '{}')''',
+'''CREATE TABLE IF NOT EXISTS scan_photos (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,jpeg TEXT NOT NULL,created_at DOUBLE PRECISION NOT NULL)''',
 '''CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,csrf TEXT NOT NULL,created_at DOUBLE PRECISION NOT NULL,expires_at DOUBLE PRECISION NOT NULL)''',
 '''CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY,code_hash TEXT UNIQUE NOT NULL,label TEXT NOT NULL,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at DOUBLE PRECISION NOT NULL,expires_at DOUBLE PRECISION NOT NULL,max_uses INTEGER NOT NULL,used_count INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0)''',
 '''CREATE TABLE IF NOT EXISTS invitation_uses (id TEXT PRIMARY KEY,invite_id TEXT REFERENCES invitations(id) ON DELETE CASCADE,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,used_at DOUBLE PRECISION NOT NULL)''',
@@ -233,6 +234,29 @@ def barcode_lookup(code):
     if data.get('status')!=1 or not isinstance(p,dict) or not p.get('product_name'):return jsonify(found=False,code=code)
     return jsonify(found=True,code=code,name=str(p.get('product_name',''))[:200],brands=str(p.get('brands',''))[:200],quantity=str(p.get('quantity',''))[:80],source='Open Food Facts',url='https://world.openfoodfacts.org/product/'+code)
 
+@app.put('/api/scan-photos/<photo_id>')
+@authenticated(admin=True)
+def put_scan_photo(photo_id):
+    import base64,binascii
+    if not re.fullmatch(r'[a-zA-Z0-9-]{1,100}',photo_id):raise ApiError('Neplatné ID snímku.')
+    data=body();image=data.get('image','')
+    if not isinstance(image,str) or not image.startswith('data:image/jpeg;base64,') or len(image)>300000:raise ApiError('Neplatný nebo příliš velký snímek.')
+    try:raw=base64.b64decode(image.split(',',1)[1],validate=True)
+    except (ValueError,binascii.Error):raise ApiError('Neplatný snímek.')
+    if not raw.startswith(b'\xff\xd8') or not raw.endswith(b'\xff\xd9'):raise ApiError('Snímek musí být JPEG.')
+    with db() as c:
+        existing=one(c,'SELECT user_id FROM scan_photos WHERE id=%s',(photo_id,))
+        if existing and existing['user_id']!=g.user['id']:raise ApiError('Snímek není dostupný.',404)
+        execute(c,'INSERT INTO scan_photos (id,user_id,jpeg,created_at) VALUES (%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET jpeg=excluded.jpeg WHERE scan_photos.user_id=excluded.user_id',(photo_id,g.user['id'],image,time.time()))
+    return jsonify(id=photo_id)
+@app.get('/api/scan-photos/<photo_id>')
+@authenticated()
+def get_scan_photo(photo_id):
+    import base64
+    with db() as c:photo=one(c,'SELECT jpeg FROM scan_photos WHERE id=%s AND user_id=%s',(photo_id,g.user['id']))
+    if not photo:raise ApiError('Snímek nebyl nalezen.',404)
+    response=make_response(base64.b64decode(photo['jpeg'].split(',',1)[1]));response.headers['Content-Type']='image/jpeg';response.headers['Cache-Control']='private, no-store';return response
+
 @app.put('/api/state')
 @authenticated()
 def put_state():
@@ -242,6 +266,10 @@ def put_state():
     if clean.get('cycle','Měsíční') not in ('Denní','Týdenní','Měsíční'):raise ApiError('Neplatný cyklus.')
     if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',str(clean.get('closing','04:00'))):raise ApiError('Neplatný čas.')
     old=json.loads(g.user['state_json'])
+    plan=data.get('inventoryPlan',old.get('inventoryPlan',{'entries':[]}))
+    if not isinstance(plan,dict) or not isinstance(plan.get('entries'),list) or len(plan['entries'])>500:raise ApiError('Neplatný plán inventury.')
+    if plan.get('runId') is not None and (not isinstance(plan['runId'],str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,48}',plan['runId'])):raise ApiError('Neplatné kolo inventury.')
+    if g.user['role']!='admin' and plan['entries']:raise ApiError('Inventura zatím není pro uživatele povolená.',403)
     if g.user['role']!='admin' and (data.get('rows') or data.get('records')):raise ApiError('Evidence lahví zatím není pro uživatele povolená.',403)
     if g.user['role']=='admin':
         rows=data.get('rows',[]);records=data.get('records',[])
@@ -258,8 +286,17 @@ def put_state():
             if not isinstance(row.get('label'),str) or len(row['label'])>80:raise ApiError('Neplatné označení lahve.')
         for r in records:
             if not isinstance(r,dict) or r.get('productId') not in ids or type(r.get('ml')) not in (int,float):raise ApiError('Neplatná historie.')
+        entry_ids=set()
+        for entry in plan['entries']:
+            if not isinstance(entry,dict) or not isinstance(entry.get('id'),str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,48}',entry['id']) or entry['id'] in entry_ids:raise ApiError('Neplatná položka plánu.')
+            entry_ids.add(entry['id'])
+            if entry.get('productId') not in ids or entry.get('capacity') not in [v['ml'] for v in PRODUCTS[entry['productId']]['variants']]:raise ApiError('Neplatný produkt nebo objem v plánu.')
+            if not isinstance(entry.get('label',''),str) or len(entry.get('label',''))>80:raise ApiError('Neplatný název v plánu.')
+            if entry.get('status','pending') not in ('pending','done','skipped'):raise ApiError('Neplatný stav plánu.')
+            if entry.get('rowId') and entry['rowId'] not in seen:raise ApiError('Lahev plánu není v inventuře.')
         clean.update(rows=rows,records=records)
     else:clean.update(rows=[],records=[])
+    clean['inventoryPlan']=plan
     with db() as c:
         execute(c,'UPDATE users SET state_json=%s WHERE id=%s',(json.dumps(clean,ensure_ascii=False),g.user['id']))
         if clean.get('rows')!=old.get('rows') or clean.get('records')!=old.get('records'):audit(c,g.user['id'],'inventory_saved','Uložení inventury')
@@ -353,6 +390,8 @@ def health():
 def index():return send_from_directory(WEB,'index.html')
 @app.get('/app.js')
 def javascript():return send_from_directory(WEB,'app.js')
+@app.get('/inventory.js')
+def inventory_script():return send_from_directory(WEB,'inventory.js')
 @app.get('/scanner.js')
 def scanner_script():return send_from_directory(WEB,'scanner.js')
 @app.get('/auth.js')
