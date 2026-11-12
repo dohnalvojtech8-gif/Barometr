@@ -214,6 +214,25 @@ def product(id):
         if g.user['role']!='admin' or not one(c,'SELECT product_id FROM unlocks WHERE user_id=%s AND product_id=%s',(g.user['id'],id)):raise ApiError('Otevření lahví je pro testovací uživatele zatím vypnuté.',403)
         audit(c,g.user['id'],'product_opened',PRODUCTS[id]['name'])
     return jsonify(PRODUCTS[id])
+@app.get('/api/barcode/<code>')
+@authenticated()
+def barcode_lookup(code):
+    if not re.fullmatch(r'(?:[0-9]{8}|[0-9]{12,14})',code):raise ApiError('Neplatný čárový kód.')
+    digits=[int(x) for x in code]
+    if (sum(digits[-2::-2])*3+sum(digits[-3::-2])+digits[-1])%10:raise ApiError('Nesouhlasí kontrolní číslice kódu.')
+    rate_limit(['barcode:'+g.user['id']],40,60)
+    from urllib.request import Request,urlopen
+    from urllib.error import URLError
+    url='https://world.openfoodfacts.org/api/v2/product/'+code+'.json?fields=product_name,brands,quantity,product_quantity,product_quantity_unit'
+    try:
+        with urlopen(Request(url,headers={'User-Agent':'Barometr/0.5 (bottle inventory; https://github.com/dohnalvojtech8-gif/Barometr)'}),timeout=7) as response:
+            data=json.loads(response.read(65536))
+    except (URLError,TimeoutError,ValueError,OSError):raise ApiError('Online databáze není dostupná. Ověřte etiketu a objem ručně.',503)
+    if not isinstance(data,dict):raise ApiError('Online databáze vrátila neplatnou odpověď.',503)
+    p=data.get('product',{})
+    if data.get('status')!=1 or not isinstance(p,dict) or not p.get('product_name'):return jsonify(found=False,code=code)
+    return jsonify(found=True,code=code,name=str(p.get('product_name',''))[:200],brands=str(p.get('brands',''))[:200],quantity=str(p.get('quantity',''))[:80],source='Open Food Facts',url='https://world.openfoodfacts.org/product/'+code)
+
 @app.put('/api/state')
 @authenticated()
 def put_state():
@@ -334,6 +353,8 @@ def health():
 def index():return send_from_directory(WEB,'index.html')
 @app.get('/app.js')
 def javascript():return send_from_directory(WEB,'app.js')
+@app.get('/scanner.js')
+def scanner_script():return send_from_directory(WEB,'scanner.js')
 @app.get('/auth.js')
 def auth_script():return send_from_directory(WEB,'auth.js')
 @app.get('/style.css')

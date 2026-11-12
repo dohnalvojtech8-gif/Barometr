@@ -79,3 +79,25 @@ def test_password_change_revokes_other_sessions():
  assert a.post('/api/password',json={'oldPassword':'test-admin-two-password','newPassword':'replacement-test-password'},headers=h).status_code==200
  assert b.get('/api/me').status_code==401
  assert a.get('/api/me').status_code==200
+
+def test_barcode_lookup_validation_and_fallback(monkeypatch):
+ from io import BytesIO
+ from urllib.error import URLError
+ a,h=login()
+ assert app.test_client().get('/api/barcode/3017620422003').status_code==401
+ for code in ('abc','1234567','3017620422004','12345678901'):
+  assert a.get('/api/barcode/'+code).status_code==400
+ seen=[]
+ def lookup(req,timeout):
+  seen.append((req.full_url,timeout))
+  return BytesIO(json.dumps({'status':1,'product':{'product_name':'Example spirit','quantity':'700 ml','brands':'Example'}}).encode())
+ monkeypatch.setattr('urllib.request.urlopen',lookup)
+ r=a.get('/api/barcode/3017620422003')
+ assert r.status_code==200 and r.json['name']=='Example spirit' and r.json['quantity']=='700 ml'
+ assert seen[0][0].startswith('https://world.openfoodfacts.org/api/v2/product/3017620422003.json?fields=') and seen[0][1]==7
+ monkeypatch.setattr('urllib.request.urlopen',lambda *a,**kw:BytesIO(b'{"status":0}'))
+ assert a.get('/api/barcode/3017620422003').json['found'] is False
+ def offline(*args,**kwargs):raise URLError('offline')
+ monkeypatch.setattr('urllib.request.urlopen',offline)
+ assert a.get('/api/barcode/3017620422003').status_code==503
+ assert a.get('/scanner.js').status_code==200
