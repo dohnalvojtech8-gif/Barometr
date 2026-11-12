@@ -8,7 +8,7 @@ Průvodce ověří etiketu a objem, vysvětlí přípravu, otevře zadní kameru
 
 V prohlížečích s podporou BarcodeDetector se EAN/UPC načte automaticky z živého náhledu. Jinde lze kód opsat. Kontroluje se formát i kontrolní číslice. Po stisknutí Dohledat server vyhledá údaje v Open Food Facts. Nalezený název a objem musí uživatel porovnat s etiketou a vybraným produktem. Výsledek databáze automaticky nemění produkt a chybějící záznam nebrání měření. Kód neidentifikuje jednotlivou fyzickou lahev; tu rozlišuje řádek inventury.
 
-Zdroj: [Open Food Facts API](https://openfoodfacts.github.io/openfoodfacts-server/api/tutorial-off-api/), data [ODbL](https://world.openfoodfacts.org/data). Náhledy kamery zůstávají na zařízení; server dostává pouze zadaný kód. Přístup k lookup endpointu vyžaduje přihlášení a má časový limit i omezení četnosti.
+Zdroj: [Open Food Facts API](https://openfoodfacts.github.io/openfoodfacts-server/api/tutorial-off-api/), data [ODbL](https://world.openfoodfacts.org/data). Živý náhled zůstává na zařízení; při potvrzení rychlého skenu se na server ukládá snímek a výsledek. Online dohledávání produktu odesílá pouze zadaný kód. Přístup k lookup endpointu vyžaduje přihlášení a má časový limit i omezení četnosti.
 
 ## Obsah lahve a přesnost
 
@@ -28,6 +28,14 @@ Po kontrole průvodce následuje samostatné potvrzení uložení do inventury. 
 
 V režimu inventury se kamera otevírá rovnou pro další očekávanou lahev a ukazuje její název, objem, místo a následující produkt. Uživatel označí aktuální hladinu v živém obrazu a ověří horní a spodní referenci. **Skenovat, uložit a další** pořídí JPEG, vypočítá orientační objem, uloží snímek a měření a automaticky otevře další lahev. Nepoužívá se automatická detekce hladiny ani univerzální kalibrace tvaru. Při selhání ukládání zůstane stejná lahev otevřená a lze zkusit uložení znovu. ID snímku i měření je odvozené od kola a položky, aby opakování nepřidávalo duplicitní měření.
 
-Snímky sekvenční inventury jsou oproti samostatnému skenu výslovně ukládané na serveru do databáze. V historii je odkaz na fotografii; endpoint ověřuje vlastníka účtu a neumožní jinému účtu snímek zobrazit ani přepsat. JPEG se na zařízení zmenšuje a komprimuje; jeho velikost kontroluje server. Když kamera není dostupná, vážení může uložit výsledek bez fotografie. Samostatný sken zůstává beze změny a nic neodesílá automaticky.
+Snímky sekvenční inventury jsou oproti samostatnému skenu výslovně ukládané na serveru do databáze. V historii je odkaz na fotografii; endpoint ověřuje vlastníka účtu a neumožní jinému účtu snímek zobrazit ani přepsat. JPEG se na zařízení zmenšuje a komprimuje; jeho velikost kontroluje server. Když kamera není dostupná, vážení může uložit výsledek bez fotografie. Rychlý samostatný sken od verze 0.8 také ukládá fotografii a výsledek po stisknutí tlačítka Skenovat a uložit.
 
 Živé vedení kontroluje světlost, stabilitu obrazu a na jednolitém kontrastním pozadí heuristicky odhaduje obrys a dává pokyny k vzdálenosti a vystředění. Když se obrys nedaří určit, nabídne ruční zarovnání. Tento odhad není identifikace produktu ani detekce hladiny. Volitelné vedení náklonu využívá DeviceOrientation po povolení uživatelem; bez podpory pokračuje ruční zarovnání. Barevný rámeček znamená vhodné podmínky náhledu, nikoliv ověřenou přesnost objemu.
+
+## Přímý skener (0.8)
+
+Mobilní tlačítko Začít inventuru rovnou otevře kameru pro další čekající lahev. Dokončený plán zahájí nové kolo; bez plánu se převezmou existující fyzické lahve. Bez evidovaných lahví se výběr odemčeného produktu a objemu zobrazí přímo přes živý náhled. Tlačítko Skenovat v knihovně otevírá kameru bez úvodních a přípravných stránek; rychlé uložení nevede přes stránky rozboru.
+
+Video vyplňuje celý viewport pomocí object-fit: cover, ovládání leží přes obraz. Zpracování náhledu i ukládaná fotografie používají stejný viditelný výřez. Čáry hladiny lze táhnout přímo po obrazu nebo nastavit v rozbalovacích ovladačích. Referenční body a potvrzení vhodnosti lahve zůstávají nutné pro orientační odečet.
+
+Správa uživatelů a detail aktivit jsou pro administrátora dostupné také z hlavní strany a Mého profilu.

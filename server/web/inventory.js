@@ -25,9 +25,21 @@
       }finally{busy=false;}
       lastResult=product.name+' · '+value.ml+' ml';window.BarometrScanner.close();toast('Uloženo: '+lastResult+'.');if(document.hidden||location.hash!==routeAtStart){redraw();return;}await start();
     }});}
+    async function quickStart(){
+      if(busy)return;
+      if(remaining().length){await start();return;}
+      if(plan().entries.length){await change(s=>{s.inventoryPlan.runId=crypto.randomUUID();s.inventoryPlan.entries.forEach(e=>{e.status='pending';delete e.completedAt;});});if(remaining().length)await start();return;}
+      const rows=getState().rows;
+      if(rows.length){await change(s=>{s.inventoryPlan={runId:crypto.randomUUID(),entries:rows.map(r=>({id:crypto.randomUUID(),rowId:r.id,productId:r.productId,capacity:r.capacity,label:r.label,status:'pending'}))};});if(remaining().length)await start();return;}
+      const available=products.filter(p=>Object.hasOwn(getState().unlocks,p.id));
+      window.BarometrScanner.open({product:{name:'Vyberte lahev',variants:[]},capacity:0,autoCamera:true,picker:available,lookup:code=>send('/api/barcode/'+code,undefined,'GET'),onPick:async(productId,capacity)=>{
+        await change(s=>{s.inventoryPlan={runId:crypto.randomUUID(),entries:[{id:crypto.randomUUID(),productId,capacity,label:'Lahev 1',status:'pending'}]};});
+        if(remaining().length)await start();else throw Error('Plán se nepodařilo uložit. Zkuste znovu.');
+      }});
+    }
     document.addEventListener('change',e=>{if(e.target.id==='plan-product'){const p=byId.get(e.target.value);document.querySelector('#plan-volume').innerHTML=p?p.variants.map(v=>`<option value="${v.ml}">${v.ml} ml</option>`).join(''):'<option value="">Vyberte produkt</option>';}});
     document.addEventListener('click',async event=>{const button=event.target.closest('[data-plan]');if(!button||button.disabled||busy)return;const {plan:action,id}=button.dataset;if(action==='start'){await start();return;}if(action==='add'){const productId=document.querySelector('#plan-product').value,capacity=Number(document.querySelector('#plan-volume').value),p=byId.get(productId);if(!p||!p.variants.some(v=>v.ml===capacity)){toast('Vyberte produkt a objem.');return;}const label=document.querySelector('#plan-label').value.trim()||'Lahev '+(plan().entries.length+1);await change(s=>{s.inventoryPlan.entries.push({id:crypto.randomUUID(),productId,capacity,label,status:'pending'});});return;}if(action==='restart'){if(!confirm('Začít nové kolo inventury? Dosavadní měření a snímky zůstanou v historii.'))return;await change(s=>{s.inventoryPlan.runId=crypto.randomUUID();s.inventoryPlan.entries.forEach(e=>{e.status='pending';delete e.completedAt;});});return;}await change(s=>{const entries=s.inventoryPlan.entries,index=entries.findIndex(e=>e.id===id);if(action==='import'){const used=new Set(entries.map(e=>e.rowId));s.rows.filter(r=>!used.has(r.id)).forEach(r=>entries.push({id:crypto.randomUUID(),rowId:r.id,productId:r.productId,capacity:r.capacity,label:r.label,status:'pending'}));return;}if(index<0)return;if(action==='remove')entries.splice(index,1);if(action==='restore')entries[index].status='pending';if(action==='up'&&index>0)[entries[index-1],entries[index]]=[entries[index],entries[index-1]];if(action==='down'&&index<entries.length-1)[entries[index+1],entries[index]]=[entries[index],entries[index+1]];});});
-    return {view,start};
+    return {view,start,quickStart};
   }
   window.BarometrInventory={create};
 })();

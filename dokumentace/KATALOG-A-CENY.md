@@ -8,12 +8,12 @@ Katalog pokrývá vodku, rumy, whisky, giny, tequily, likéry, pálenky a dalš�
 
 Cena je za jeden katalogový produkt se všemi aktuálně uvedenými velikostmi, ne za každý objem zvlášť. Jde o cenu digitálního odemčení, nikoli cenu alkoholu.
 
-- 2 Kč: vybrané běžné domácí lihoviny (např. Božkov, Hanácká, Fernet Stock).
-- 4 Kč: základní vodky, likéry, aperitivy a pálenky.
-- 5 Kč: základní giny a absinth.
-- 6 Kč: základní rumy, whisky a tequily.
-- 8 Kč: vybrané prémiové značky a brandy/koňaky.
-- 10 Kč: vybrané luxusní řady (např. XO, Zacapa, Don Julio).
+- 0,49 €: vybrané běžné domácí lihoviny (např. Božkov, Hanácká, Fernet Stock).
+- 0,79 €: základní vodky, likéry, aperitivy a pálenky.
+- 0,99 €: základní giny a absinth.
+- 1,29 €: základní rumy, whisky a tequily.
+- 1,49 €: vybrané prémiové značky a brandy/koňaky.
+- 1,99 €: vybrané luxusní řady (např. XO, Zacapa, Don Julio).
 
 Finální přiřazení ceny každé položce je explicitní pole `unlockPrice` v katalogu. Ceny jsou produktové rozhodnutí pro tento prototyp, nikoli ověřené náklady na kalibraci.
 
@@ -23,7 +23,7 @@ V zákaznickém náhledu jsou tři bezplatná odemčení podle vlastního výbě
 
 ## Majitelský náhled
 
-Majitel dostane aktivační odkaz. Token se neukládá do GitHubu, v aplikaci je pouze jeho SHA-256 otisk. Aktivace nabídne všechna odemčení za 0 Kč; musí se jednotlivě potvrdit. Odemčení neznamená přidání fyzické lahve do inventury.
+Majitel dostane aktivační odkaz. Token se neukládá do GitHubu, v aplikaci je pouze jeho SHA-256 otisk. Aktivace nabídne všechna odemčení za 0,00 €; musí se jednotlivě potvrdit. Odemčení neznamená přidání fyzické lahve do inventury.
 
 Toto je lokální vývojový režim bez serverové autentizace. Stav lze v prohlížeči změnit a token není náhrada přihlášení. Nelze jej používat pro skutečně placené licence. Před produkčním prodejem je nutné přidat účty, serverová oprávnění, evidenci plateb a ověřené webhooky. Nový prohlížeč má vlastní lokální kvótu, nikoli celosvětově sdílený zákaznický limit.
 
@@ -36,3 +36,5 @@ Toto je lokální vývojový režim bez serverové autentizace. Stav lze v prohl
 Tři původní fotografie jsou lokální soubory. Nový katalog načítá produktové fotografie ze zdrojových veřejných CDN adres; vyžadují internet a zdroj je může změnit. Při chybě se zobrazí zástupný stav. Práva k fotografiím zůstávají držitelům a licence pro komerční distribuci nebyla ověřena.
 
 U 11 variant zdroj neměl produktovou fotografii; v aplikaci jsou výslovně označené „Fotografii doplníme“ a nepoužívá se fotografie jiného produktu.
+
+Aktuální měna odemčení je EUR; jde o nové cenové hladiny 0,49–1,99 €, nikoli kurzový přepočet. Platby zůstávají vypnuté.

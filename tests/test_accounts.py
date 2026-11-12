@@ -130,3 +130,10 @@ def test_inventory_plan_and_private_scan_photos():
  assert b.get(url).status_code==404
  assert b.put(url,json={'image':image},headers=bh).status_code==404
  assert a.get('/inventory.js').status_code==200
+
+def test_catalog_euro_prices():
+ a,h=login();catalog=a.get('/api/catalog').json
+ assert catalog['currency']=='EUR'
+ prices=[p['unlockPrice'] for p in catalog['products']]
+ assert min(prices)==0.49 and max(prices)==1.99
+ assert all(p in (0.49,0.79,0.99,1.29,1.49,1.99) for p in prices)
