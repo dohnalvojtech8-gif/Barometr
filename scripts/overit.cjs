@@ -1,1 +1,9 @@
-const fs=require('fs'),vm=require('vm'),assert=require('assert');const elements={};const el=()=>({innerHTML:'',textContent:'',classList:{add(){},remove(){}},value:''});const context={console,Intl,Date,Number,Math,JSON,setTimeout:()=>{},localStorage:{getItem:()=>null,setItem:()=>{}},location:{hash:''},window:{scrollTo(){},addEventListener(){}},document:{querySelector:s=>elements[s]??=el(),addEventListener(){}}};vm.createContext(context);vm.runInContext(fs.readFileSync(require('path').join(__dirname,'../aplikace/app.js'),'utf8'),context);for(const route of ['overview','catalog','detail-0','detail-1','detail-2','scan','result','history','archive-0','settings']){context.location.hash='#'+route;vm.runInContext('render()',context);assert(elements['#app'].innerHTML.length>200,route)}assert.equal(vm.runInContext('balance(products[0])',context),-10);assert.equal(vm.runInContext('390/40',context),9.75);console.log('PASS: 10 obrazovek vykresleno; rozdíl zásob a přepočet panáků ověřeny.');
+const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
+const root=path.resolve(__dirname,'..'),ctx={window:{}};
+vm.runInNewContext(fs.readFileSync(path.join(root,'aplikace/catalog-data.js'),'utf8'),ctx);
+const products=ctx.window.BAROMETR_CATALOG.products;
+assert(products.length>=1000);
+assert.equal(new Set(products.map(p=>p.id)).size,products.length);
+for(const p of products){assert(p.name&&p.category&&p.variants.length);assert([2,4,5,6,8,10].includes(p.unlockPrice));assert.equal(new Set(p.variants.map(v=>v.ml)).size,p.variants.length);for(const v of p.variants){assert(v.ml>=40&&v.ml<=6000);assert(v.source.startsWith('https://'));assert(v.image===null||v.image.startsWith('https://')||fs.existsSync(path.join(root,'aplikace',v.image)));}}
+const app=fs.readFileSync(path.join(root,'aplikace/app.js'),'utf8');new vm.Script(app);assert(!/function top\(/.test(app));assert(app.includes('credits()===0'));assert(app.includes('reason:state.ownerPreview'));
+console.log(`PASS: ${products.length} products, unique IDs and volumes, valid sources, price bounds, JavaScript syntax and browser-name regression.`);

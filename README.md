@@ -1,40 +1,40 @@
-# BAROMETR
+# BAROMETR v0.3
 
-Interaktivní prototyp aplikace pro inventuru baru. Aktuální katalog: **Amundsen, Captain Morgan a Jägermeister**, včetně produktových fotografií uložených lokálně.
+Katalog a prototyp inventury pro české bary. **1 049 produktů, 1 231 doložených objemových variant, 10 kategorií.**
 
-## Otevření
+[Otevřít aplikaci](https://barometr-2.onrender.com/?v=0.3.0#catalog)
 
-Stáhněte repozitář přes **Code → Download ZIP** a rozbalte jej.
+## Funkce
 
-- `01-VSECHNY-OBRAZOVKY.html`: všech 9 návrhů pod sebou, funguje offline i bez JavaScriptu.
-- `02-INTERAKTIVNI-APLIKACE.html`: ovladatelná aplikace v jediném souboru. Otevřete v běžném prohlížeči; náhled souborů na telefonu nemusí spouštět JavaScript.
-- `aplikace/`: oddělený zdrojový kód a fotografie.
+- Katalog se skutečnými produktovými fotografiemi, vyhledáváním, kategoriemi a stránkováním.
+- Tři produkty zdarma podle vlastního výběru; ceny dalších 2–10 Kč.
+- Potvrzení odemčení a samostatná knihovna „Moje lahve“.
+- Majitelský vývojový náhled s ručním odemykáním za 0 Kč.
+- Více fyzických lahví jednoho produktu, ruční objem v ml, přepočty na 20/40ml panáky.
+- Prodeje, ostatní výdej, porovnání měření a místní historie s označením cyklu.
 
-## Vývoj
+**Platby nejsou spuštěné. Automatické měření fotografií ani OCR váhy nejsou implementované.** Odemčení a kvóta jsou zatím místní stav prohlížeče, nikoli serverově ověřené licence nebo účty. Katalog je široký snapshot českého dodavatele, ne úplný seznam celého trhu.
 
-Bez instalačních závislostí. Pro ověření a sestavení samostatných HTML potřebujete Node.js:
+## Spuštění a kontrola
 
 ```sh
+python3 -m http.server 8080 --directory aplikace
 node scripts/overit.cjs
 node scripts/sestavit-nahledy.cjs
 ```
 
-Lokální server s Pythonem:
+Otevřete `http://localhost:8080`. Bez instalačních závislostí. Skript sestavení vytváří `02-INTERAKTIVNI-APLIKACE.html`; fotografie nového katalogu vyžadují internet. Soubor `01-VSECHNY-OBRAZOVKY.html` je archivní statický design v0.2, nikoli aktuální katalog.
 
-```sh
-python3 -m http.server 8080 --directory aplikace
-```
+Na Renderu se používá Static Site bez build příkazu. Zdroj je v `aplikace/`; symbolický odkaz `Aplikace` zachovává kompatibilitu s existujícím nastavením služby.
 
-Otevřete `http://localhost:8080`.
+## Dokumentace
 
-## Stav
+- [Katalog, ceny, zdroje a omezení](dokumentace/KATALOG-A-CENY.md)
+- [Přidávání lahví](dokumentace/PRIDAVANI-LAHVI.md)
+- [Původní fotografie](dokumentace/ZDROJE-OBRAZKU.md)
 
-Funguje navigace, ukázkové inventury, katalog, volba demonstračního objemu, ruční zadání ml, přepočet na 20/40ml panáky, úprava prodejů a místní ukládání. Fotoaparát lze zapnout podle oprávnění prohlížeče.
+Nové záznamy jsou v `aplikace/catalog-data.js`. U varianty jsou objem, fotografie a odkaz na zdroj. Cena produktu je pole `unlockPrice`. Před reálným prodejem je potřeba doplnit účty, platební bránu, serverová oprávnění a vyřešit práva k fotografiím. Před automatickým měřením kalibraci konkrétních obalů.
 
-**Automatické měření z fotografií ani OCR váhy nejsou implementované.** Archivní inventury a ceny jsou demonstrační. Účty, databáze, platby, skutečné uzávěrky a více fyzických lahví stejného produktu jsou další fáze vývoje.
+## Prohlížečové ověření
 
-## Další lahve
-
-Postup a současná omezení katalogu popisuje [PRIDAVANI-LAHVI.md](dokumentace/PRIDAVANI-LAHVI.md). Přehled funkcí je v [FUNKCE-A-DALSI-VYVOJ.md](dokumentace/FUNKCE-A-DALSI-VYVOJ.md).
-
-Fotografie mají uvedené [zdroje](dokumentace/ZDROJE-OBRAZKU.md); práva k nim zůstávají držitelům, licence pro další komerční distribuci nebyla ověřena.
+`scripts/test-browser.cjs` kontroluje tři zdarma, zablokovaný čtvrtý produkt, majitelský náhled, vyhledávání, kategorie, ukládání a historii. Vyžaduje Playwright a Chromium (`npm install --no-save playwright`, `npx playwright install chromium`). Cílovou adresu lze nastavit proměnnou `TEST_URL`, vlastní Chromium proměnnou `CHROMIUM_PATH`. Aktivační token pro test majitele se předává pouze bezpečnou proměnnou `BAROMETR_OWNER_PREVIEW_TOKEN`; nepatří do repozitáře. Testuje se v novém izolovaném profilu prohlížeče.

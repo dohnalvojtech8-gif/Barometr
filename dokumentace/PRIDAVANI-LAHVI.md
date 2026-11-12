@@ -1,9 +1,11 @@
-# Postupné rozšiřování katalogu
+# Přidávání lahví v0.3
 
-Katalog je nyní v poli `products` na začátku `aplikace/app.js`. Cesty fotografií jsou v `bottleAssets`. Obrázky jsou ve složce `aplikace/assets`.
+Katalog je `aplikace/catalog-data.js`, objekt `window.BAROMETR_CATALOG` s polem `products`.
 
-Pro další produkt bude potřeba přidat záznam s unikátním číselným ID, obrázek, kategorii, podporované varianty a ukázkové hodnoty. Současný prototyp používá ID také jako index pole. Filtry kategorií, volba vážení a objemové nabídky jsou zatím pevné; před rozšířením je potřeba je převést na vlastnosti produktu. Skript sestavení má seznam tří obrázků a ukázkových detailů, který je nutné rovněž rozšířit.
+Každý produkt má stabilní unikátní `id`, název `name`, kategorii `category`, sílu `abv`, cenu odemčení `unlockPrice`, hlavní obrázek `image` a pole `variants`. Každá varianta obsahuje `ml`, `image`, `source` a `sourceName`. Nepřidávejte objemy bez doloženého zdroje. Nový tvar obalu může vyžadovat samostatnou budoucí kalibraci.
 
-Před přidáním skutečného měření potřebuje každá varianta vlastní ID, objem, označení obalu, fotografii, ověřený obrys a kalibrační tabulku výška hladiny → ml. Pro vážení navíc ověřenou taru, její toleranci a hustotu kapaliny. Chybějící údaje nesmí být považovány za naměřené.
+Cena odemčení musí být jedna z hodnot 2, 4, 5, 6, 8, 10 Kč. Pokrývá všechny uvedené velikosti produktu. Cizí příchutě nebo odlišný obsah alkoholu nepřidávejte jako pouhý objem.
 
-Po změnách spusťte `node scripts/overit.cjs` a `node scripts/sestavit-nahledy.cjs`.
+Produkty lze doplňovat bez změn logiky kategorií, stránek nebo knihovny. Zachovávejte ID stávajících produktů kvůli historii a odemčením. Fotografie nepředstavují ověřené kalibrační podklady.
+
+Kontrola: `node scripts/overit.cjs`. Sestavení samostatné aplikace: `node scripts/sestavit-nahledy.cjs`.

@@ -1,20 +1,17 @@
-BAROMETR — kompletní balíček prototypu, verze 0.2
+BAROMETR v0.3 — katalog a inventura
 
-ZAČNĚTE ZDE
-1. Rozbalte ZIP.
-2. Otevřete 01-VSECHNY-OBRAZOVKY.html: všechny návrhy pod sebou, fungují bez JavaScriptu i internetu.
-3. Pro ovládání otevřete 02-INTERAKTIVNI-APLIKACE.html v běžném prohlížeči. Náhled souborů na telefonu nemusí spouštět JavaScript.
+Aktuální aplikace: https://barometr-2.onrender.com/?v=0.3.0#catalog
 
-OBSAH
-- Oba samostatné HTML soubory obsahují i skutečné produktové fotografie.
-- aplikace/: oddělené HTML, CSS, JavaScript a fotografie.
-- dokumentace/: přehled funkcí, postup rozšíření katalogu a zdroje obrázků.
-- scripts/: sestavení samostatných souborů a kontrola obrazovek.
+aplikace/ obsahuje zdrojový kód, katalog a původní fotografie.
+02-INTERAKTIVNI-APLIKACE.html je samostatná aplikace. Nové fotografie dodavatele potřebují internet. Náhled souborů na telefonu nemusí spouštět JavaScript — použijte běžný prohlížeč.
+01-VSECHNY-OBRAZOVKY.html je archivní statický návrh v0.2.
 
-VÝVOJ
-Node.js: node scripts/sestavit-nahledy.cjs
+Katalog: 1 049 produktů a 1 231 objemových variant. První tři produkty zdarma podle výběru, další ceny 2–10 Kč. Skutečné platby nejsou spuštěné. Majitelský náhled odemyká produkty zdarma, ale nejde o serverově zabezpečené účty.
+
+V aplikaci funguje ruční zadání obsahu a přepočet na panáky. Automatické měření z fotek není implementované.
+
+Spuštění: python3 -m http.server 8080 --directory aplikace
 Kontrola: node scripts/overit.cjs
-Lokální server: python3 -m http.server 8080 --directory aplikace
-Poté otevřete http://localhost:8080
+Samostatný soubor: node scripts/sestavit-nahledy.cjs
 
-Jde o kompletní zdroje aktuálního prototypu, ne hotový systém měření. Automatické rozpoznání hladiny, OCR váhy, přepočet hmotnosti, platby a server nejsou implementovány. Data se ukládají jen v prohlížeči, pokud to povoluje. Přístup k fotoaparátu závisí na prohlížeči a zabezpečeném kontextu.
+Podrobnosti a zdroje: README.md a dokumentace/KATALOG-A-CENY.md.
