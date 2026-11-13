@@ -137,3 +137,27 @@ def test_catalog_euro_prices():
  prices=[p['unlockPrice'] for p in catalog['products']]
  assert min(prices)==0.49 and max(prices)==1.99
  assert all(p in (0.49,0.79,0.99,1.29,1.49,1.99) for p in prices)
+
+def test_vision_api_authorization_and_no_inventory_write(monkeypatch):
+ from server import vision
+ a,h=login();p=next(iter(PRODUCTS));capacity=PRODUCTS[p]['variants'][0]['ml']
+ assert a.post('/api/unlocks',json={'productId':p},headers=h).status_code==200
+ monkeypatch.delenv('OPENAI_API_KEY',raising=False)
+ assert a.get('/api/vision/status').json['enabled'] is False
+ assert app.test_client().get('/api/vision/status').status_code==401
+ assert a.post('/api/vision/analyze',json={'productId':p,'capacity':capacity,'images':[]},headers=h).status_code==503
+ monkeypatch.setenv('OPENAI_API_KEY','unit-test-placeholder');monkeypatch.setenv('BAROMETR_AUTO_LEVEL_ENABLED','1')
+ assert a.get('/api/vision/status').json['enabled'] is True
+ assert 'unit-test-placeholder' not in json.dumps(a.get('/api/vision/status').json)
+ assert a.post('/api/vision/analyze',json={'productId':[], 'capacity':capacity},headers=h).status_code==400
+ assert a.post('/api/vision/analyze',json={'productId':p,'capacity':123},headers=h).status_code==400
+ before=a.get('/api/me').json['state']
+ monkeypatch.setattr(vision,'analyze',lambda images,product,ml:{'detected':False,'reason':'Unreadable'})
+ r=a.post('/api/vision/analyze',json={'productId':p,'capacity':capacity,'images':['one','two']},headers=h)
+ assert r.status_code==200 and r.json['detected'] is False
+ assert a.get('/api/me').json['state']==before
+ code=invite(a,h)['code'];u=app.test_client()
+ assert u.post('/api/register',json={'firstName':'Vision','lastName':'Test','username':'vision_user','password':'safe-test-password','inviteCode':code}).status_code==200
+ uh={'X-CSRF-Token':u.get('/api/me').json['csrf']}
+ assert u.get('/api/vision/status').status_code==403
+ assert u.post('/api/vision/analyze',json={'productId':p,'capacity':capacity},headers=uh).status_code==403

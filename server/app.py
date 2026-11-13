@@ -234,6 +234,25 @@ def barcode_lookup(code):
     if data.get('status')!=1 or not isinstance(p,dict) or not p.get('product_name'):return jsonify(found=False,code=code)
     return jsonify(found=True,code=code,name=str(p.get('product_name',''))[:200],brands=str(p.get('brands',''))[:200],quantity=str(p.get('quantity',''))[:80],source='Open Food Facts',url='https://world.openfoodfacts.org/product/'+code)
 
+@app.get('/api/vision/status')
+@authenticated(admin=True)
+def vision_status():
+    from server.vision import configuration
+    return jsonify(configuration())
+@app.post('/api/vision/analyze')
+@authenticated(admin=True)
+def vision_analyze():
+    from server.vision import analyze,VisionError,configuration
+    data=body();product_id=data.get('productId');capacity=data.get('capacity')
+    if not isinstance(product_id,str) or product_id not in PRODUCTS or capacity not in [v['ml'] for v in PRODUCTS[product_id]['variants']]:raise ApiError('Neplatný produkt nebo objem.')
+    with db() as c:unlocked=one(c,'SELECT product_id FROM unlocks WHERE user_id=%s AND product_id=%s',(g.user['id'],product_id))
+    if not unlocked:raise ApiError('Nejdřív odemkněte produkt.',403)
+    if not configuration()['enabled']:raise ApiError('Automatický skener není připojený. Administrátor musí nastavit a povolit analýzu obrazu.',503)
+    rate_limit(['vision:'+g.user['id']],60,3600)
+    try:result=analyze(data.get('images'),PRODUCTS[product_id],capacity)
+    except VisionError as error:raise ApiError(str(error),error.status)
+    return jsonify(result)
+
 @app.put('/api/scan-photos/<photo_id>')
 @authenticated(admin=True)
 def put_scan_photo(photo_id):
@@ -385,7 +404,8 @@ def change_password():
 @app.get('/healthz')
 def health():
     with db() as c:execute(c,'SELECT 1')
-    return jsonify(status='ok')
+    from server.vision import configuration
+    return jsonify(status='ok',automaticLevelEnabled=configuration()['enabled'])
 @app.get('/')
 def index():return send_from_directory(WEB,'index.html')
 @app.get('/app.js')
