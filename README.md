@@ -1,40 +1,39 @@
-# BAROMETR v0.3
+# BAROMETR 0.10
 
-Katalog a prototyp inventury pro české bary. **1 049 produktů, 1 231 doložených objemových variant, 10 kategorií.**
+Účtová aplikace pro inventuru barů: 1 049 produktů, 1 231 doložených objemových variant a 10 kategorií.
 
-[Otevřít aplikaci](https://barometr-2.onrender.com/?v=0.3.0#catalog)
+[Otevřít aplikaci](https://barometr-app.onrender.com/)
 
-## Funkce
+## Aktuální funkce
 
-- Katalog se skutečnými produktovými fotografiemi, vyhledáváním, kategoriemi a stránkováním.
-- Tři produkty zdarma podle vlastního výběru; ceny dalších 2–10 Kč.
-- Potvrzení odemčení a samostatná knihovna „Moje lahve“.
-- Majitelský vývojový náhled s ručním odemykáním za 0 Kč.
-- Více fyzických lahví jednoho produktu, ruční objem v ml, přepočty na 20/40ml panáky.
-- Prodeje, ostatní výdej, porovnání měření a místní historie s označením cyklu.
+- Serverové účty, pozvánky, oprávnění a administrátorský přehled aktivit.
+- Katalog a knihovna lahví; ceny digitálního odemčení 0,39–0,99 €.
+- 1 614 značkových a tematických balíčků v databázi, osm nabídek s obměnou každé pondělí podle Europe/Prague.
+- Sekvenční inventura s měnitelným pořadím, celoobrazovková kamera, ukládání soukromých snímků a historie.
+- Ruční odečet, kalibrované vážení a soukromé vícebodové profily pro konkrétní produkt a kapacitu.
+- Volitelné napojení automatické AI analýzy. Bez serverové konfigurace se nespouští; přesnost na reálných lahvích zatím není ověřená.
 
-**Platby nejsou spuštěné. Automatické měření fotografií ani OCR váhy nejsou implementované.** Odemčení a kvóta jsou zatím místní stav prohlížeče, nikoli serverově ověřené licence nebo účty. Katalog je široký snapshot českého dodavatele, ne úplný seznam celého trhu.
+**Platby nejsou spuštěné.** Běžní testovací uživatelé nabídky prohlížejí, administrátor odemyká zdarma. Odemykání neznamená vytvoření fyzické lahve ani ověřenou kalibraci všech hladin.
 
-## Spuštění a kontrola
+## Spuštění a ověření
+
+Backend je Flask/PostgreSQL, zdroj `server/app.py`, frontend `server/web/`. Konfigurace účtů a lokálního SQLite testování: [README-ACCOUNTS.md](README-ACCOUNTS.md). V produkci je PostgreSQL povinný. Tajné hodnoty patří do prostředí, nikoli do repozitáře.
 
 ```sh
-python3 -m http.server 8080 --directory aplikace
+python -m pip install -r requirements.txt pytest
+python -m pytest -q
 node scripts/overit.cjs
-node scripts/sestavit-nahledy.cjs
+node tests/scanner-math.cjs
 ```
 
-Otevřete `http://localhost:8080`. Bez instalačních závislostí. Skript sestavení vytváří `02-INTERAKTIVNI-APLIKACE.html`; fotografie nového katalogu vyžadují internet. Soubor `01-VSECHNY-OBRAZOVKY.html` je archivní statický design v0.2, nikoli aktuální katalog.
+Browser testy v `tests/` vyžadují Playwright a Chromium. Používají pouze vlastní lokální testovací účet a testovací data; nelze je spouštět proti produkčnímu účtu. Test AI používá simulované odpovědi a neměří skutečnou úspěšnost rozpoznávání.
 
-Na Renderu se používá Static Site bez build příkazu. Zdroj je v `aplikace/`; symbolický odkaz `Aplikace` zachovává kompatibilitu s existujícím nastavením služby.
+Na Renderu běží `barometr-app` podle `render-auth.yaml`. Původní statický web v `aplikace/index.html` přesměrovává na účtovou aplikaci. Staré HTML ukázky a skripty ve `scripts/` nejsou aktuální produkční frontend.
 
 ## Dokumentace
 
-- [Katalog, ceny, zdroje a omezení](dokumentace/KATALOG-A-CENY.md)
+- [Ceny, balíčky a týdenní rotace](dokumentace/KATALOG-A-CENY.md)
+- [Skenování a omezení měření](dokumentace/SKENOVANI.md)
+- [AI analýza: konfigurace a stav ověření](dokumentace/AUTOMATICKE-ROZPOZNANI.md)
 - [Přidávání lahví](dokumentace/PRIDAVANI-LAHVI.md)
-- [Původní fotografie](dokumentace/ZDROJE-OBRAZKU.md)
-
-Nové záznamy jsou v `aplikace/catalog-data.js`. U varianty jsou objem, fotografie a odkaz na zdroj. Cena produktu je pole `unlockPrice`. Před reálným prodejem je potřeba doplnit účty, platební bránu, serverová oprávnění a vyřešit práva k fotografiím. Před automatickým měřením kalibraci konkrétních obalů.
-
-## Prohlížečové ověření
-
-`scripts/test-browser.cjs` kontroluje tři zdarma, zablokovaný čtvrtý produkt, majitelský náhled, vyhledávání, kategorie, ukládání a historii. Vyžaduje Playwright a Chromium (`npm install --no-save playwright`, `npx playwright install chromium`). Cílovou adresu lze nastavit proměnnou `TEST_URL`, vlastní Chromium proměnnou `CHROMIUM_PATH`. Aktivační token pro test majitele se předává pouze bezpečnou proměnnou `BAROMETR_OWNER_PREVIEW_TOKEN`; nepatří do repozitáře. Testuje se v novém izolovaném profilu prohlížeče.
+- [Zdroje původních fotografií](dokumentace/ZDROJE-OBRAZKU.md)

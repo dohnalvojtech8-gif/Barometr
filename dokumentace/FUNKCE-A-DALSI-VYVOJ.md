@@ -1,3 +1,5 @@
+> Archivní popis v0.3. Aktuální účtová aplikace, ceny a měření jsou popsány v README.md, KATALOG-A-CENY.md a AUTOMATICKE-ROZPOZNANI.md.
+
 # Stav v0.3
 
 Implementováno: katalog 1 049 produktů, 1 231 variant, 10 kategorií, vyhledávání bez ohledu na diakritiku, stránkování, lokální odemykání se třemi bezplatnými produkty, majitelský náhled, knihovna odemčených produktů a více samostatných fyzických lahví. Ručně zadaná měření, přepočty na porce 20/40 ml, prodeje a ostatní výdej, rozdíl zásob a historie měření s cyklem a obdobím.

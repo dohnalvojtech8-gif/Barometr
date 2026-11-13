@@ -39,18 +39,23 @@ def validate_image(image):
         raise VisionError('Snímek pro analýzu musí být JPEG.', 400)
 
 
-def validate_result(result, capacity):
+def validate_result(result, capacity, profile=None):
     if not isinstance(result, dict) or not isinstance(result.get('frames'), list) or len(result['frames']) != 2:
         raise VisionError('Analýza vrátila neplatná data. Nic nebylo uloženo.', 502)
+    from server.calibration import validate_points,interpolate,CalibrationError
+    if profile:
+        try:validate_points(profile.get('points'),capacity)
+        except CalibrationError:raise VisionError('Uložená kalibrace je neplatná. Opravte profil lahve.',422)
+        if profile.get('capacity')!=capacity:raise VisionError('Kalibrace neodpovídá objemu lahve.',422)
     ratios, markers = [], []
     for frame in result['frames']:
         if not isinstance(frame, dict):
             raise VisionError('Analýza vrátila neplatná data.', 502)
-        if frame.get('bottle_count') != 1 or frame.get('matches_product') is not True:
+        if type(frame.get('bottle_count')) is not int or frame.get('bottle_count') != 1 or frame.get('matches_product') is not True:
             return {'detected': False, 'reason': 'V záběru musí být jedna lahev odpovídající vybranému produktu.'}
         if frame.get('level_visible') is not True or frame.get('bottle_fully_visible') is not True:
             return {'detected': False, 'reason': 'Hladina není zřetelná. Otočte lahev, omezte odlesky a zahrňte celé tělo.'}
-        if frame.get('constant_section') is not True:
+        if frame.get('constant_section') is not True and not profile:
             return {'detected': False, 'reason': 'Tvar této lahve není vhodný pro přepočet výšky na ml. Použijte kalibrované vážení.'}
         values = [frame.get(k) for k in ('full_y', 'level_y', 'bottom_y')]
         if any(type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v <= 1 for v in values):
@@ -60,13 +65,15 @@ def validate_result(result, capacity):
             return {'detected': False, 'reason': 'Referenční body hladiny nejsou jednoznačné. Změňte záběr.'}
         ratios.append((bottom - level) / (bottom - top))
         markers.append({'top': top * 100, 'level': level * 100, 'bottom': bottom * 100})
-    if abs(ratios[0] - ratios[1]) > .035 or abs(markers[0]['level'] - markers[1]['level']) > 2.5:
+    predicted=[interpolate(r,profile['points'],capacity) if profile else capacity*r for r in ratios]
+    if abs(ratios[0] - ratios[1]) > .035 or abs(predicted[0]-predicted[1])>capacity*.035 or any(abs(markers[0][k]-markers[1][k])>2.5 for k in ('top','level','bottom')):
         return {'detected': False, 'reason': 'Hladina se mezi snímky neshoduje. Držte lahev i telefon v klidu.'}
     ratio = sum(ratios) / 2
-    ml = max(0, min(capacity, math.floor(capacity * ratio / 10 + .5) * 10))
-    return {'detected': True, 'ml': ml, 'method': 'vision-estimate',
-            'label': 'Automatický AI odhad · neověřená přesnost',
-            'markers': markers[-1], 'calibrated': False,
+    ml = max(0, min(capacity, math.floor((sum(predicted)/2) / 10 + .5) * 10))
+    return {'detected': True, 'ml': ml, 'method': 'vision-calibrated-height' if profile else 'vision-estimate',
+            'label': 'AI odečet s vlastní kalibrací · přesnost neověřena' if profile else 'Automatický AI odhad · neověřená přesnost',
+            'markers': markers[-1], 'calibrated': bool(profile), 'accuracyVerified': False,
+            'calibrationUpdatedAt': profile.get('updatedAt') if profile else None,
             'evidence': 'two-frame-consistency', 'provider': 'OpenAI'}
 
 
@@ -80,7 +87,7 @@ SCHEMA = {'type': 'object', 'additionalProperties': False,
           'properties': {'frames': {'type': 'array', 'items': FRAME_SCHEMA}}, 'required': ['frames']}
 
 
-def analyze(images, product, capacity):
+def analyze(images, product, capacity, profile=None):
     if not isinstance(images, list) or len(images) != 2:
         raise VisionError('Analýza vyžaduje dva snímky stejné lahve.', 400)
     for image in images:
@@ -105,7 +112,7 @@ def analyze(images, product, capacity):
     )
     payload = {'model': configuration()['model'], 'store': False, 'max_output_tokens': 700,
                'input': [{'role': 'system', 'content': instructions}, {'role': 'user', 'content': [
-                   {'type': 'input_text', 'text': json.dumps({'selected_product': product['name'], 'capacity_ml': capacity}, ensure_ascii=False)},
+                   {'type': 'input_text', 'text': json.dumps({'selected_product': product['name'], 'capacity_ml': capacity, 'has_user_height_calibration':bool(profile)}, ensure_ascii=False)},
                    *[{'type': 'input_image', 'image_url': image, 'detail': 'high'} for image in images],
                ]}], 'text': {'format': {'type': 'json_schema', 'name': 'bottle_liquid_level', 'strict': True, 'schema': SCHEMA}}}
     req = Request('https://api.openai.com/v1/responses', data=json.dumps(payload).encode(), method='POST',
@@ -127,4 +134,4 @@ def analyze(images, product, capacity):
         result = json.loads(text)
     except (ValueError, AttributeError, TypeError):
         raise VisionError('AI nedokončila rozpoznání. Nic nebylo uloženo.', 502)
-    return validate_result(result, capacity)
+    return validate_result(result, capacity, profile)

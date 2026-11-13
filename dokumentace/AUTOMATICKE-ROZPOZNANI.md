@@ -42,3 +42,9 @@ Potřebujeme skutečné fotografie několika známých objemů každé podporova
 - [OpenAI: strukturované odpovědi](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [Render: proměnné prostředí a tajné údaje](https://render.com/docs/configure-environment-variables)
 - [Vector-LabPics: výzkum segmentace materiálů v nádobách](https://pmc.ncbi.nlm.nih.gov/articles/PMC7596871/) — příklad potřebných trénovacích a validačních dat; v tomto projektu se tento model ani dataset nepoužívá.
+
+## Doplnění 0.10: profil výšky a objemu
+
+Existuje-li soukromý měřený profil přesně pro daný produkt a kapacitu, server použije jeho interpolaci místo prostého poměru výšky. S takovým profilem není stálý průřez nutnou podmínkou přepočtu; čitelná hladina, celé tělo, platné reference i shoda záběrů zůstávají povinné. Kontroluje se také shoda horní a spodní reference a rozdíl výsledných objemů mezi snímky. Profil nemůže nahradit neviditelnou hladinu nebo opravit chybnou detekci.
+
+Záznam nese `calibrated: true` jen ve významu použití uživatelského profilu; `accuracyVerified` zůstává `false`. Počet a rozložení naměřených bodů i rozdíly skleněných lahví mohou výslednou chybu významně ovlivnit. Profil se nikdy nepřenáší na jinou značku, velikost nebo účet.

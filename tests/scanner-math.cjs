@@ -15,3 +15,8 @@ assert.equal(guidance({light:130,motion:0,outline:{height:.7,center:.5}},5,null)
 const pixels=new Uint8ClampedArray(64*48*4).fill(255);for(let y=8;y<40;y++)for(let x=25;x<39;x++)for(let k=0;k<3;k++)pixels[(y*64+x)*4+k]=50;
 const stats=frameStats(pixels,pixels,64,48);assert(stats.outline);assert(stats.outline.center>.4&&stats.outline.center<.6);assert.equal(stats.motion,0);
 console.log('Live guidance: light, tilt, motion, distance, centering and synthetic silhouette passed.');
+vm.runInNewContext(fs.readFileSync('server/web/calibration.js','utf8'),sandbox);
+const empirical=[{fraction:0,ml:0},{fraction:.25,ml:70},{fraction:.5,ml:200},{fraction:.75,ml:420},{fraction:1,ml:700}];
+assert.equal(sandbox.window.BarometrCalibration.interpolate(.5,empirical,700),200);
+assert.equal(sandbox.window.BarometrCalibration.interpolate(.375,empirical,700),135);
+console.log('Measured profile: client interpolation agrees with server for a non-linear bottle.');

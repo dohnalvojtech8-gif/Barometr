@@ -45,6 +45,8 @@ def password_ok(value,hashed):
 DUMMY=password_hash(secrets.token_urlsafe(24))
 SCHEMA=[
 '''CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL, username_key TEXT UNIQUE NOT NULL, first_name TEXT NOT NULL, last_name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','user')), status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','suspended')), created_at DOUBLE PRECISION NOT NULL, last_login DOUBLE PRECISION, last_seen DOUBLE PRECISION, login_count INTEGER NOT NULL DEFAULT 0, state_json TEXT NOT NULL DEFAULT '{}')''',
+'''CREATE TABLE IF NOT EXISTS shop_bundles (id TEXT PRIMARY KEY,kind TEXT NOT NULL,template_json TEXT NOT NULL,created_at DOUBLE PRECISION NOT NULL)''',
+'''CREATE TABLE IF NOT EXISTS bottle_calibrations (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,product_id TEXT NOT NULL,capacity INTEGER NOT NULL,points_json TEXT NOT NULL,updated_at DOUBLE PRECISION NOT NULL,PRIMARY KEY(user_id,product_id,capacity))''',
 '''CREATE TABLE IF NOT EXISTS scan_photos (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,jpeg TEXT NOT NULL,created_at DOUBLE PRECISION NOT NULL)''',
 '''CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,csrf TEXT NOT NULL,created_at DOUBLE PRECISION NOT NULL,expires_at DOUBLE PRECISION NOT NULL)''',
 '''CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY,code_hash TEXT UNIQUE NOT NULL,label TEXT NOT NULL,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at DOUBLE PRECISION NOT NULL,expires_at DOUBLE PRECISION NOT NULL,max_uses INTEGER NOT NULL,used_count INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0)''',
@@ -71,6 +73,19 @@ init_db()
 raw=(ROOT/'aplikace/catalog-data.js').read_text()
 CATALOG=json.loads(raw.split(' = ',1)[1].rstrip(';\n'))
 PRODUCTS={p['id']:p for p in CATALOG['products']}
+
+from server.shop import build_templates,choose_week,quote
+
+def seed_shop():
+    templates=build_templates(CATALOG['products'])
+    with db() as c:
+        # Batch inserts avoid one database round trip for each template.
+        for offset in range(0,len(templates),200):
+            batch=templates[offset:offset+200];args=[]
+            for t in batch:args.extend((t['id'],t['kind'],json.dumps(t,ensure_ascii=False),time.time()))
+            execute(c,'INSERT INTO shop_bundles (id,kind,template_json,created_at) VALUES '+','.join(['(%s,%s,%s,%s)']*len(batch))+' ON CONFLICT (id) DO UPDATE SET kind=excluded.kind,template_json=excluded.template_json',tuple(args))
+        return [json.loads(r['template_json']) for r in allrows(c,'SELECT template_json FROM shop_bundles ORDER BY id')]
+SHOP_TEMPLATES=seed_shop()
 
 class ApiError(Exception):
     def __init__(self,message,status=400):self.message=message;self.status=status
@@ -198,6 +213,26 @@ def logout():
 @app.get('/api/catalog')
 @authenticated()
 def catalog():return jsonify(CATALOG)
+@app.get('/api/shop')
+@authenticated()
+def shop_offers():
+    current=choose_week(SHOP_TEMPLATES)
+    with db() as c:owned={r['product_id'] for r in allrows(c,'SELECT product_id FROM unlocks WHERE user_id=%s',(g.user['id'],))}
+    current['offers']=[quote(t,PRODUCTS,owned) for t in current['offers']]
+    return jsonify(**current,templateCount=len(SHOP_TEMPLATES),paymentsEnabled=False,adminFree=g.user['role']=='admin')
+@app.post('/api/shop/bundles/<bundle_id>/unlock')
+@authenticated(admin=True)
+def unlock_bundle(bundle_id):
+    data=body();current=choose_week(SHOP_TEMPLATES)
+    if data.get('weekKey')!=current['weekKey']:raise ApiError('Nabídka se změnila. Načtěte aktuální balíčky.',409)
+    template=next((t for t in current['offers'] if t['id']==bundle_id),None)
+    if not template:raise ApiError('Tento balíček už není v aktuální nabídce.',409)
+    added=0
+    with db() as c:
+        for product_id in template['productIds']:
+            added+=execute(c,'INSERT INTO unlocks (user_id,product_id,created_at) VALUES (%s,%s,%s) ON CONFLICT (user_id,product_id) DO NOTHING',(g.user['id'],product_id,time.time())).rowcount
+        if added:audit(c,g.user['id'],'bundle_unlocked',template['title'])
+    return jsonify(ok=True,productIds=template['productIds'],addedCount=added,paidCents=0,currency='EUR')
 @app.post('/api/unlocks')
 @authenticated(admin=True)
 def unlock():
@@ -234,6 +269,25 @@ def barcode_lookup(code):
     if data.get('status')!=1 or not isinstance(p,dict) or not p.get('product_name'):return jsonify(found=False,code=code)
     return jsonify(found=True,code=code,name=str(p.get('product_name',''))[:200],brands=str(p.get('brands',''))[:200],quantity=str(p.get('quantity',''))[:80],source='Open Food Facts',url='https://world.openfoodfacts.org/product/'+code)
 
+def read_calibration(c,user_id,product_id,capacity):
+    row=one(c,'SELECT points_json,updated_at FROM bottle_calibrations WHERE user_id=%s AND product_id=%s AND capacity=%s',(user_id,product_id,capacity))
+    return {'productId':product_id,'capacity':capacity,'points':json.loads(row['points_json']),'updatedAt':row['updated_at'],'accuracyVerified':False} if row else None
+@app.route('/api/calibrations/<product_id>/<int:capacity>',methods=['GET','PUT'])
+@authenticated(admin=True)
+def calibration_profile(product_id,capacity):
+    from server.calibration import validate_points,CalibrationError
+    if product_id not in PRODUCTS or capacity not in [v['ml'] for v in PRODUCTS[product_id]['variants']]:raise ApiError('Neplatná varianta lahve.')
+    with db() as c:
+        if not one(c,'SELECT product_id FROM unlocks WHERE user_id=%s AND product_id=%s',(g.user['id'],product_id)):raise ApiError('Nejdříve odemkněte produkt.',403)
+        if request.method=='PUT':
+            data=body()
+            if data.get('measured') is not True:raise ApiError('Potvrďte vlastní měření referenčních bodů.')
+            try:points=validate_points(data.get('points'),capacity)
+            except CalibrationError as error:raise ApiError(str(error))
+            execute(c,'INSERT INTO bottle_calibrations (user_id,product_id,capacity,points_json,updated_at) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (user_id,product_id,capacity) DO UPDATE SET points_json=excluded.points_json,updated_at=excluded.updated_at',(g.user['id'],product_id,capacity,json.dumps(points),time.time()))
+            audit(c,g.user['id'],'calibration_saved',PRODUCTS[product_id]['name']+' · '+str(capacity)+' ml')
+        profile=read_calibration(c,g.user['id'],product_id,capacity)
+    return jsonify(profile=profile)
 @app.get('/api/vision/status')
 @authenticated(admin=True)
 def vision_status():
@@ -245,11 +299,13 @@ def vision_analyze():
     from server.vision import analyze,VisionError,configuration
     data=body();product_id=data.get('productId');capacity=data.get('capacity')
     if not isinstance(product_id,str) or product_id not in PRODUCTS or capacity not in [v['ml'] for v in PRODUCTS[product_id]['variants']]:raise ApiError('Neplatný produkt nebo objem.')
-    with db() as c:unlocked=one(c,'SELECT product_id FROM unlocks WHERE user_id=%s AND product_id=%s',(g.user['id'],product_id))
+    with db() as c:
+        unlocked=one(c,'SELECT product_id FROM unlocks WHERE user_id=%s AND product_id=%s',(g.user['id'],product_id))
+        profile=read_calibration(c,g.user['id'],product_id,capacity)
     if not unlocked:raise ApiError('Nejdřív odemkněte produkt.',403)
     if not configuration()['enabled']:raise ApiError('Automatický skener není připojený. Administrátor musí nastavit a povolit analýzu obrazu.',503)
     rate_limit(['vision:'+g.user['id']],60,3600)
-    try:result=analyze(data.get('images'),PRODUCTS[product_id],capacity)
+    try:result=analyze(data.get('images'),PRODUCTS[product_id],capacity,profile)
     except VisionError as error:raise ApiError(str(error),error.status)
     return jsonify(result)
 
@@ -405,11 +461,15 @@ def change_password():
 def health():
     with db() as c:execute(c,'SELECT 1')
     from server.vision import configuration
-    return jsonify(status='ok',automaticLevelEnabled=configuration()['enabled'])
+    return jsonify(status='ok',automaticLevelEnabled=configuration()['enabled'],shopBundleTemplates=len(SHOP_TEMPLATES))
 @app.get('/')
 def index():return send_from_directory(WEB,'index.html')
 @app.get('/app.js')
 def javascript():return send_from_directory(WEB,'app.js')
+@app.get('/shop.js')
+def shop_script():return send_from_directory(WEB,'shop.js')
+@app.get('/calibration.js')
+def calibration_script():return send_from_directory(WEB,'calibration.js')
 @app.get('/inventory.js')
 def inventory_script():return send_from_directory(WEB,'inventory.js')
 @app.get('/scanner.js')

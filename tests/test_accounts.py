@@ -135,8 +135,8 @@ def test_catalog_euro_prices():
  a,h=login();catalog=a.get('/api/catalog').json
  assert catalog['currency']=='EUR'
  prices=[p['unlockPrice'] for p in catalog['products']]
- assert min(prices)==0.49 and max(prices)==1.99
- assert all(p in (0.49,0.79,0.99,1.29,1.49,1.99) for p in prices)
+ assert min(prices)==0.39 and max(prices)==0.99
+ assert all(p in (0.39,0.49,0.59,0.69,0.79,0.89,0.99) for p in prices)
 
 def test_vision_api_authorization_and_no_inventory_write(monkeypatch):
  from server import vision
@@ -152,7 +152,7 @@ def test_vision_api_authorization_and_no_inventory_write(monkeypatch):
  assert a.post('/api/vision/analyze',json={'productId':[], 'capacity':capacity},headers=h).status_code==400
  assert a.post('/api/vision/analyze',json={'productId':p,'capacity':123},headers=h).status_code==400
  before=a.get('/api/me').json['state']
- monkeypatch.setattr(vision,'analyze',lambda images,product,ml:{'detected':False,'reason':'Unreadable'})
+ monkeypatch.setattr(vision,'analyze',lambda images,product,ml,profile=None:{'detected':False,'reason':'Unreadable'})
  r=a.post('/api/vision/analyze',json={'productId':p,'capacity':capacity,'images':['one','two']},headers=h)
  assert r.status_code==200 and r.json['detected'] is False
  assert a.get('/api/me').json['state']==before
@@ -161,3 +161,56 @@ def test_vision_api_authorization_and_no_inventory_write(monkeypatch):
  uh={'X-CSRF-Token':u.get('/api/me').json['csrf']}
  assert u.get('/api/vision/status').status_code==403
  assert u.post('/api/vision/analyze',json={'productId':p,'capacity':capacity},headers=uh).status_code==403
+
+def test_database_bundle_pool_atomic_idempotent_unlock_and_expiry(monkeypatch):
+ from datetime import datetime
+ from zoneinfo import ZoneInfo
+ from server.shop import choose_week
+ from server.app import SHOP_TEMPLATES
+ monkeypatch.setattr('server.app.choose_week',lambda templates:choose_week(templates,datetime(2026,11,13,12,tzinfo=ZoneInfo('Europe/Prague'))))
+ a,h=login();shop=a.get('/api/shop').json
+ assert app.test_client().get('/api/shop').status_code==401
+ assert shop['templateCount']>1000 and len(shop['offers'])==8
+ with db() as c:assert one(c,'SELECT COUNT(*) AS n FROM shop_bundles')['n']>1000
+ pack=next(t for t in shop['offers'] if t['special'])
+ assert pack['priceCents']==49 and pack['regularCents']==147
+ endpoint='/api/shop/bundles/'+pack['id']+'/unlock'
+ before=a.get('/api/me').json['state'];assert a.post(endpoint,json={'weekKey':'2026-11-02'},headers=h).status_code==409
+ assert a.get('/api/me').json['state']==before
+ assert a.post(endpoint,json={'weekKey':shop['weekKey']}).status_code==403
+ result=a.post(endpoint,json={'weekKey':shop['weekKey']},headers=h);assert result.status_code==200
+ assert result.json['paidCents']==0
+ assert all(id in a.get('/api/me').json['state']['unlocks'] for id in pack['productIds'])
+ assert a.post(endpoint,json={'weekKey':shop['weekKey']},headers=h).json['addedCount']==0
+ after=next(t for t in a.get('/api/shop').json['offers'] if t['id']==pack['id']);assert after['personalPriceCents']==0
+ code=invite(a,h)['code'];u=app.test_client()
+ assert u.post('/api/register',json={'firstName':'Shop','lastName':'Test','username':'shop_user','password':'safe-test-password','inviteCode':code}).status_code==200
+ uh={'X-CSRF-Token':u.get('/api/me').json['csrf']}
+ assert u.get('/api/shop').status_code==200
+ assert u.post(endpoint,json={'weekKey':shop['weekKey']},headers=uh).status_code==403
+ # A failure in the middle of a bundle must roll back the entire unlock transaction.
+ pack=next(t for t in a.get('/api/shop').json['offers'] if t['kind']=='collection' and t['remainingCount']>2)
+ before=a.get('/api/me').json['state']['unlocks'];original=execute;attempts=[0]
+ def failing(c,sql,args=()):
+  if sql.startswith('INSERT INTO unlocks'):
+   attempts[0]+=1
+   if attempts[0]==2:raise RuntimeError('simulated database failure')
+  return original(c,sql,args)
+ with monkeypatch.context() as m:
+  m.setattr('server.app.execute',failing)
+  assert a.post('/api/shop/bundles/'+pack['id']+'/unlock',json={'weekKey':shop['weekKey']},headers=h).status_code==500
+ assert a.get('/api/me').json['state']['unlocks']==before
+
+def test_calibration_profile_is_private_and_scoped_to_capacity():
+ a,h=login();b,bh=login('AdminTwo','test-admin-two-password');product_id=next(iter(PRODUCTS));capacity=PRODUCTS[product_id]['variants'][0]['ml']
+ for client,headers in ((a,h),(b,bh)):assert client.post('/api/unlocks',json={'productId':product_id},headers=headers).status_code==200
+ path='/api/calibrations/'+product_id+'/'+str(capacity)
+ points=[{'fraction':f,'ml':ml*capacity} for f,ml in [(0,0),(.25,.1),(.5,.3),(.75,.6),(1,1)]]
+ assert a.put(path,json={'points':points},headers=h).status_code==400
+ assert a.put(path,json={'points':points,'measured':True},headers=h).status_code==200
+ assert a.get(path).json['profile']['points']==points
+ assert a.get(path).json['profile']['accuracyVerified'] is False
+ assert b.get(path).json['profile'] is None
+ assert app.test_client().get(path).status_code==401
+ assert a.put(path,json={'points':points[:-1],'measured':True},headers=h).status_code==400
+ assert a.get(path).json['profile']['points']==points
